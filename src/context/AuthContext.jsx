@@ -22,17 +22,17 @@ export const AuthProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle(); // Changing to maybeSingle prevents the 406 / coercion crash
+        .maybeSingle();
 
       if (error) throw error;
-      setProfile(data); // Will be null if no profile exists, which is perfect
+      setProfile(data); 
     } catch (err) {
       console.error('Error fetching user profile:', err.message);
       setProfile(null);
     }
   };
 
- useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
 
     // 1. Initial Session Check on App Mount
@@ -41,7 +41,6 @@ export const AuthProvider = ({ children }) => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session && isMounted) {
           setUser(session.user);
-          // Wait for the profile fetch, but catch any unexpected issues
           await fetchProfile(session.user.id).catch(err => 
             console.error("Failed to fetch initial profile:", err)
           );
@@ -49,7 +48,7 @@ export const AuthProvider = ({ children }) => {
       } catch (err) {
         console.error('Session check failed:', err.message);
       } finally {
-        if (isMounted) setLoading(false); // ALWAYS runs, avoiding infinite loading
+        if (isMounted) setLoading(false);
       }
     };
 
@@ -60,7 +59,7 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         if (!isMounted) return;
         
-        // If they logged out, quickly clean up state and stop loading
+        // Clean up state immediately if user logs out
         if (!session) {
           setUser(null);
           setProfile(null);
@@ -68,14 +67,17 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
-        // If they logged in or refreshed
+        // FIX: Re-engage loading state immediately when user authenticates.
+        // This blocks the App.jsx router from firing getHomePath() until the profile row arrives.
+        setLoading(true);
+        
         setUser(session.user);
         try {
           await fetchProfile(session.user.id);
         } catch (err) {
           console.error("Profile fetch error during auth state change:", err);
         } finally {
-          if (isMounted) setLoading(false); // Safety net: ALWAYS stop loading
+          if (isMounted) setLoading(false); // Safe to unlock routing now
         }
       }
     );
@@ -86,7 +88,6 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Standard email/password login wrapper
   const login = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -96,7 +97,6 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  // Sign out wrapper
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
@@ -118,7 +118,6 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Custom hook to consume the AuthContext cleanly in child components
 export const useAuth = () => {
   return useContext(AuthContext);
 };

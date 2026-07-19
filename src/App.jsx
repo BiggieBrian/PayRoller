@@ -14,7 +14,25 @@ import LandingPage from './pages/LandingPage';
 import RestaurantSetup from './pages/RestaurantSetup';
 
 function App() {
-  const { user, role } = useAuth();
+  // Destructure 'loading' from your refactored AuthContext
+  const { user, role, loading } = useAuth();
+
+  // 1. Loading Guard: Prevents race conditions and early routing decisions 
+  // while profile data is being fetched over the live network.
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-6 text-white select-none">
+        <div className="flex items-center gap-1.5 font-mono tracking-widest text-sm font-bold mb-3">
+          <span>PAY</span>
+          <span className="text-emerald-400">ROLLER</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
+        </div>
+        <p className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase animate-pulse">
+          Synchronizing Secure Session...
+        </p>
+      </div>
+    );
+  }
 
   // Helper to determine home path based on role
   const getHomePath = () => {
