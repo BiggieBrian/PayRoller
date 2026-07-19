@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable'; // 1. Import it as a default function export
 
 export const generatePayslipPDF = (profile) => {
   const doc = new jsPDF({
@@ -8,7 +8,6 @@ export const generatePayslipPDF = (profile) => {
     format: 'a4',
   });
 
-  // Safe formatting function inside the PDF generator
   const formatKES = (amount) => {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
@@ -17,150 +16,127 @@ export const generatePayslipPDF = (profile) => {
     }).format(amount || 0);
   };
 
-  // 1. Math & Calculations
+  // Math Calculations
   const basicSalary = Number(profile?.fixed_salary || 0);
   const overtime = Number(profile?.current_overtime || 0);
-  const totalGross = basicSalary + overtime;
+  const totalPaid = basicSalary + overtime;
 
   const systemDeduction = Number(profile?.current_system_deduction || 0);
   const shorts = Number(profile?.current_shorts || 0);
   const advance = Number(profile?.current_advance || 0);
   const breakages = Number(profile?.current_breakages || 0);
-  const totalDeductions = systemDeduction + shorts + advance + breakages;
-
-  const netSalary = totalGross - totalDeductions;
   
-  // Get current Month/Year (e.g., "July 2026")
+  const totalDeductions = systemDeduction + shorts + advance + breakages;
+  const netSalary = totalPaid - totalDeductions;
+  
   const payPeriod = new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
 
-  // 2. Header & Branding
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(16, 185, 129); // Accent Emerald green
-  doc.text('PAYROLLER LTD', 14, 20);
+  // 1. Sleek Black Header Block
+  doc.setFillColor(9, 9, 11); // zinc-950
+  doc.rect(0, 0, 210, 35, 'F');
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);
-  doc.text('Official Monthly Earnings Statement', 14, 25);
-
-  // Payslip Badge (Top Right)
-  doc.setFillColor(241, 245, 249);
-  doc.rect(140, 12, 56, 16, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42);
-  doc.text('PAYSLIP', 145, 18);
+  doc.setFontSize(22);
+  doc.setTextColor(255, 255, 255);
+  doc.text('PAYROLLER', 14, 22);
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text(`Period: ${payPeriod}`, 145, 23);
+  doc.setTextColor(161, 161, 170); // zinc-400
+  doc.text('AUTOMATED WORKFORCE SYSTEM', 14, 28);
 
-  // Decorative divider line
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.line(14, 32, 196, 32);
-
-  // 3. Employee & Employer Metadata
+  // Payslip Badge
+  doc.setFillColor(24, 24, 27); // zinc-800
+  doc.roundedRect(145, 8, 51, 18, 1, 1, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42);
-  doc.text('EMPLOYEE DETAILS', 14, 40);
+  doc.setTextColor(255, 255, 255);
+  doc.text('OFFICIAL PAYSLIP', 149, 14);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(161, 161, 170);
+  doc.text(`Period: ${payPeriod}`, 149, 21);
+
+  // 2. Metadata Columns
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(9, 9, 11);
+  doc.text('EMPLOYEE RECORD', 14, 48);
+  doc.line(14, 50, 95, 50);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`Name: ${profile?.full_name || 'Staff Member'}`, 14, 46);
-  doc.text(`Role: ${profile?.role?.toUpperCase() || 'Staff'}`, 14, 51);
-  doc.text(`Bank: ${profile?.bank_name || 'COOP'}`, 14, 56);
-  doc.text(`Account No: ${profile?.bank_account_number || 'N/A'}`, 14, 61);
+  doc.setTextColor(82, 82, 91); // zinc-600
+  doc.text(`Name:  ${profile?.full_name || 'Staff Member'}`, 14, 56);
+  doc.text(`Role:  ${profile?.role?.toUpperCase() || 'STAFF'}`, 14, 61);
+  doc.text(`Bank:  ${profile?.bank_name || 'COOP'}`, 14, 66);
+  doc.text(`Acct:   ${profile?.bank_account_number || 'N/A'}`, 14, 71);
 
-  // Payment Date Metadata
-  doc.text(`Print Date: ${new Date().toLocaleDateString('en-KE')}`, 130, 46);
-  doc.text('Status: APPROVED & PAID', 130, 51);
+  doc.setFont('helvetica', 'bold');
+  doc.text('STATEMENT DETAILS', 115, 48);
+  doc.line(115, 50, 196, 50);
 
-  // 4. Financial breakdown table using jspdf-autotable
-  doc.autoTable({
-    startY: 68,
-    head: [['Earnings description', 'Amount (KES)', 'Deductions description', 'Amount (KES)']],
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(82, 82, 91);
+  doc.text(`Print Date: ${new Date().toLocaleDateString('en-KE')}`, 115, 56);
+  doc.text('Status: Paid & Reconciled', 115, 61);
+  doc.text('System ID: Automated Run', 115, 66);
+
+  // 3. Structured Data Table (Bypasses doc.autoTable to avoid the type error)
+  autoTable(doc, {
+    startY: 80,
+    head: [['Earnings Category', 'Amount', 'Deductions Category', 'Amount']],
     body: [
+      ['Basic Salary', formatKES(basicSalary), 'System Deductions', formatKES(systemDeduction)],
+      ['Overtime Work', formatKES(overtime), 'Shortages', formatKES(shorts)],
+      ['', '', 'Salary Advances', formatKES(advance)],
+      ['', '', 'Breakages / Losses', formatKES(breakages)],
       [
-        'Basic Salary', 
-        formatKES(basicSalary), 
-        'System Deductions', 
-        formatKES(systemDeduction)
-      ],
-      [
-        'Overtime', 
-        formatKES(overtime), 
-        'Shortages', 
-        formatKES(shorts)
-      ],
-      [
-        '', 
-        '', 
-        'Salary Advance', 
-        formatKES(advance)
-      ],
-      [
-        '', 
-        '', 
-        'Breakages', 
-        formatKES(breakages)
-      ],
-      // Total Rows
-      [
-        { content: 'Total Gross Earnings', styles: { fontStyle: 'bold' } },
-        { content: formatKES(totalGross), styles: { fontStyle: 'bold' } },
-        { content: 'Total Deductions', styles: { fontStyle: 'bold' } },
-        { content: formatKES(totalDeductions), styles: { fontStyle: 'bold' } }
+        { content: 'Total Gross Earnings', styles: { fontStyle: 'bold', fillColor: [244, 244, 245] } },
+        { content: formatKES(totalPaid), styles: { fontStyle: 'bold', fillColor: [244, 244, 245] } },
+        { content: 'Total Deductions', styles: { fontStyle: 'bold', fillColor: [244, 244, 245] } },
+        { content: formatKES(totalDeductions), styles: { fontStyle: 'bold', fillColor: [244, 244, 245] } }
       ]
     ],
-    theme: 'striped',
+    theme: 'grid',
     headStyles: {
-      fillColor: [15, 23, 42], // Slate-900 background for headers
+      fillColor: [9, 9, 11],
       textColor: [255, 255, 255],
-      fontStyle: 'bold',
       fontSize: 9,
+      fontStyle: 'bold'
     },
     bodyStyles: {
-      fontSize: 9,
-      textColor: [51, 65, 85],
+      fontSize: 8.5,
+      textColor: [39, 39, 42]
     },
     columnStyles: {
       1: { halign: 'right' },
       3: { halign: 'right' }
     },
+    margin: { left: 14, right: 14 }
   });
 
-  // 5. Summary Section (Net Pay Callout)
-  const finalY = doc.lastAutoTable.finalY + 10;
-
-  // Draw a Net Pay highlight box
-  doc.setFillColor(240, 253, 250); // Light emerald green background
-  doc.setDrawColor(209, 250, 229); // Soft emerald border
-  doc.roundedRect(14, finalY, 182, 18, 2, 2, 'FD');
+  // 4. Highlighted Net Pay Banner
+  // Grabbing the vertical coordinate safely from the document instance directly
+  const finalY = doc.lastAutoTable.finalY + 8;
+  doc.setFillColor(244, 244, 245); // Light Gray Band
+  doc.setDrawColor(228, 228, 231); 
+  doc.setLineWidth(0.3);
+  doc.roundedRect(14, finalY, 182, 16, 1, 1, 'FD');
 
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(9, 9, 11);
+  doc.text('NET DISBURSED AMOUNT', 18, finalY + 10);
   doc.setFontSize(11);
-  doc.setTextColor(6, 95, 70); // Dark emerald green text
-  doc.text('NET TAKE-HOME PAY', 18, finalY + 11);
-  
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formatKES(netSalary), 190, finalY + 11, { align: 'right' });
+  doc.text(formatKES(netSalary), 190, finalY + 10, { align: 'right' });
 
-  // 6. Footer Disclaimer
+  // 5. System Footer
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    'This is a computer-generated document. No physical signature is required.', 
-    98, 
-    280, 
-    { align: 'center' }
-  );
+  doc.setTextColor(161, 161, 170);
+  doc.text('This is an official system-verified transaction copy.', 105, 282, { align: 'center' });
 
-  // Save the generated document
-  const fileName = `Payslip_${profile?.full_name?.replace(/\s+/g, '_') || 'Employee'}_${payPeriod.replace(/\s+/g, '_')}.pdf`;
-  doc.save(fileName);
+  // Save document
+  doc.save(`Payslip_${profile?.full_name?.split(' ')[0] || 'Staff'}_${payPeriod.replace(/\s+/g, '_')}.pdf`);
 };
