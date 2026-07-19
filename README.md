@@ -1,16 +1,31 @@
-# React + Vite
+PayRoller
+PayRoller is a lightweight, high-performance web-based automated payroll management platform designed to help businesses manage employee attendance, track localized earnings, and distribute system-verified digital payslips seamlessly.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ Features
+ Admin Dashboard
+Workforce Overview: Real-time visibility into total active staff counts and total calculated net liabilities.
 
-Currently, two official plugins are available:
+Onboarding Invitation Engine: Generate dynamic employee invite codes pre-assigned with specific roles and basic salaries, locked into single-click sharing interfaces.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+WhatsApp Deep Linking: Instantly send invitations to staff via WhatsApp using sanitized phone processing, supporting automated messaging directly to unsaved contacts.
 
-## React Compiler
+Staff Portal
+Interactive Earnings Statement: Transparent, real-time breakdowns of monthly basic salaries, overtime earnings, cash shortages, advances, and equipment breakages.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Data Masking: Single-toggle privacy controls allowing employees to selectively hide or show confidential financial values on-screen.
 
-## Expanding the ESLint configuration
+Automated Document Export: One-click localized PDF engine compiling high-contrast, premium digital payslips (formatted cleanly in KES) complete with system verification tags.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Smart Attendance: Geofenced clock-in capabilities anchored to precise geographical coordinates and radius restrictions.
+
+Tech Stack
+Frontend: React (Vite, Hooks, Context API)
+
+Styling: Tailwind CSS (Custom Dark/High-Contrast Zinc Theme)
+
+Document Generation: jsPDF + jspdf-autotable
+
+Deployment: Vercel
+
+📄 License
+This project is proprietary software built for automated workplace workforce management. All automated runs and ledger formats are system-verified.
