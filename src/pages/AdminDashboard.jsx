@@ -287,40 +287,48 @@ export default function AdminDashboard() {
   );
 
   const handleWhatsAppShare = () => {
-    if (!generatedLink) return;
+  if (!generatedLink) return;
 
-    if (!invitePhone) {
-      showNotice("Please enter a phone number first", "error");
-      return;
-    }
+  if (!invitePhone) {
+    showNotice("Please enter a phone number first", "error");
+    return;
+  }
 
-    // Clean up any stray spaces, plus signs, or symbols from the input string
-    const cleanPhone = invitePhone.replace(/\D/g, "");
+  // 1. Clean up non-digits and drop a leading '0' if typed out of habit
+  let sanitizedBody = invitePhone.replace(/\D/g, "").replace(/^0/, "");
 
-    // Format the salary cleanly for readability (handles empty or invalid inputs gracefully)
-    const formattedSalary = inviteBaseSalary
-      ? Number(inviteBaseSalary).toLocaleString()
-      : "Not Specified";
+  // 2. Strict validation for Kenyan local mobile number length (9 digits after country code badge)
+  if (sanitizedBody.length !== 9) {
+    showNotice("Please enter a valid 9-digit mobile number.", "error");
+    return;
+  }
 
-    // Craft a professional message with clean line breaks
-    const message =
-      `📢 *Onboarding Invitation*\n\n` +
-      `You have been invited to join our team on PayRoller!\n\n` +
-      `• *Position/Role:* ${inviteRole}\n` +
-      `• *Starting Basic Salary:* Ksh ${formattedSalary}\n\n` +
-      `Please click the link below to complete your profile and access your staff portal:\n` +
-      `${generatedLink}`;
+  // 3. Attach the locked country code safely
+  const completePhoneNumber = `254${sanitizedBody}`;
 
-    // Encode text for URL safety
-    const encodedMessage = encodeURIComponent(message);
+  // Format the salary cleanly for readability
+  const formattedSalary = inviteBaseSalary
+    ? Number(inviteBaseSalary).toLocaleString()
+    : "Not Specified";
 
-    // Use api.whatsapp.com/send to support directly messaging unsaved phone contacts
-    window.open(
-      `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`,
-      "_blank",
-    );
-  };
+  // Craft a professional message with clean line breaks
+  const message =
+    `📢 *Onboarding Invitation*\n\n` +
+    `You have been invited to join our team on PayRoller!\n\n` +
+    `• *Position/Role:* ${inviteRole}\n` +
+    `• *Starting Basic Salary:* Ksh ${formattedSalary}\n\n` +
+    `Please click the link below to complete your profile and access your staff portal:\n` +
+    `${generatedLink}`;
 
+  // Encode text for URL safety
+  const encodedMessage = encodeURIComponent(message);
+
+  // 4. Fire the window.open with the formatted completePhoneNumber string
+  window.open(
+    `https://api.whatsapp.com/send?phone=${completePhoneNumber}&text=${encodedMessage}`,
+    "_blank",
+  );
+};
   return (
     <div className="flex min-h-screen bg-[#09090b] text-[#e4e4e7] font-sans antialiased overflow-x-hidden">
       {/* MOBILE BACKDROP OVERLAY */}
@@ -569,24 +577,33 @@ export default function AdminDashboard() {
 
                         {/* New Phone Number Input (Spans full width on small screens) */}
                         <div className="sm:col-span-2">
-                          <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-                            Recipient Phone Number (For WhatsApp)
-                          </label>
-                          <input
-                            type="tel"
-                            disabled={!!generatedLink}
-                            placeholder="e.g. 254712345678"
-                            className="w-full bg-[#09090b] border border-[#1f1f23] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500/50 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
-                            value={invitePhone}
-                            onChange={(e) => setInvitePhone(e.target.value)}
-                          />
-                          {!generatedLink && (
-                            <span className="text-[10px] text-zinc-600 mt-1 block">
-                              Include country code without the + sign (e.g., 254
-                              for Kenya).
-                            </span>
-                          )}
-                        </div>
+  <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+    Recipient Phone Number (WhatsApp)
+  </label>
+  <div className="relative flex items-center">
+    {/* Permanent un-deletable visual prefix */}
+    <span className="absolute left-3 text-zinc-500 font-mono text-sm select-none pointer-events-none">
+      254
+    </span>
+    <input
+      type="tel"
+      disabled={!!generatedLink}
+      placeholder="712345678"
+      className="w-full bg-[#09090b] border border-[#1f1f23] rounded-lg p-2.5 pl-11 text-white focus:outline-none focus:border-emerald-500/50 font-mono disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+      value={invitePhone}
+      onChange={(e) => {
+        // Enforce numbers only and limit to 9 digits maximum (after the 254)
+        const cleanValue = e.target.value.replace(/\D/g, '').slice(0, 9);
+        setInvitePhone(cleanValue);
+      }}
+    />
+  </div>
+  {!generatedLink && (
+    <span className="text-[10px] text-zinc-600 mt-1 block font-mono">
+      Type the 9-digit mobile number (e.g., 712345678). Country code is locked.
+    </span>
+  )}
+</div>
                       </div>
 
                       {/* Primary Link Generation Call to Action / Reset State */}
