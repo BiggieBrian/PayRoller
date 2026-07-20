@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 const AuthContext = createContext({
   user: null,
   profile: null,
+  restaurant: null, // Initialized placeholder
   loading: true,
   role: null,
   login: async () => {},
@@ -15,19 +16,28 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Helper: Fetch the profile associated with the authenticated user ID
+  // Helper: Fetch the profile AND associated restaurant subscription state dynamically
   const fetchProfile = async (userId) => {
     try {
+      // Performs a clean relational query to pull both records in one network request
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          *,
+          restaurants (
+            id,
+            trial_start_timestamp,
+            trial_end_timestamp,
+            is_subscription_active
+          )
+        `)
         .eq('id', userId)
         .maybeSingle();
 
       if (error) throw error;
       setProfile(data); 
     } catch (err) {
-      console.error('Error fetching user profile:', err.message);
+      console.error('Error fetching user profile & restaurant details:', err.message);
       setProfile(null);
     }
   };
@@ -67,8 +77,7 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
-        // FIX: Re-engage loading state immediately when user authenticates.
-        // This blocks the App.jsx router from firing getHomePath() until the profile row arrives.
+        // Re-engage loading state immediately when user authenticates.
         setLoading(true);
         
         setUser(session.user);
@@ -105,6 +114,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     profile,
+    restaurant: profile?.restaurants || null, // Safely exposes the nested restaurant object globally
     loading,
     role: profile?.role || null,
     login,

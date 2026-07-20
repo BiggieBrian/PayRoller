@@ -14,9 +14,10 @@ import {
   Wallet,
   Mail,
   LayoutDashboard,
+  Lock,
 } from "lucide-react";
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ isPaywallLocked = false }) {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar drawer state
   const [activeTab, setActiveTab] = useState("overview"); // 'overview', 'directory', 'payroll'
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,10 @@ export default function AdminDashboard() {
   const [notice, setNotice] = useState({ text: "", type: "" });
   const [isSaving, setIsSaving] = useState(false);
   const [invitePhone, setInvitePhone] = useState("");
+
+  // Paywall manual submission code state
+  const [mpesaCode, setMpesaCode] = useState("");
+  const [verifyingCode, setVerifyingCode] = useState(false);
 
   // Onboarding invite states
   const [inviteRole, setInviteRole] = useState("Waiter");
@@ -58,6 +63,12 @@ export default function AdminDashboard() {
 
       if (profileError) throw profileError;
       setAdminProfile(profileData);
+
+      // If the dashboard is paywall-locked, skip loading sensitive business rows entirely
+      if (isPaywallLocked) {
+        setLoading(false);
+        return;
+      }
 
       // Fetch employees
       const { data: employeesData, error: employeesError } = await supabase
@@ -98,7 +109,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [isPaywallLocked]);
 
   // Handler 1: Update fields locally
   const handleLocalFieldChange = (employeeId, fieldName, value) => {
@@ -287,48 +298,115 @@ export default function AdminDashboard() {
   );
 
   const handleWhatsAppShare = () => {
-  if (!generatedLink) return;
+    if (!generatedLink) return;
 
-  if (!invitePhone) {
-    showNotice("Please enter a phone number first", "error");
-    return;
-  }
+    if (!invitePhone) {
+      showNotice("Please enter a phone number first", "error");
+      return;
+    }
 
-  // 1. Clean up non-digits and drop a leading '0' if typed out of habit
-  let sanitizedBody = invitePhone.replace(/\D/g, "").replace(/^0/, "");
+    let sanitizedBody = invitePhone.replace(/\D/g, "").replace(/^0/, "");
 
-  // 2. Strict validation for Kenyan local mobile number length (9 digits after country code badge)
-  if (sanitizedBody.length !== 9) {
-    showNotice("Please enter a valid 9-digit mobile number.", "error");
-    return;
-  }
+    if (sanitizedBody.length !== 9) {
+      showNotice("Please enter a valid 9-digit mobile number.", "error");
+      return;
+    }
 
-  // 3. Attach the locked country code safely
-  const completePhoneNumber = `254${sanitizedBody}`;
+    const completePhoneNumber = `254${sanitizedBody}`;
 
-  // Format the salary cleanly for readability
-  const formattedSalary = inviteBaseSalary
-    ? Number(inviteBaseSalary).toLocaleString()
-    : "Not Specified";
+    const formattedSalary = inviteBaseSalary
+      ? Number(inviteBaseSalary).toLocaleString()
+      : "Not Specified";
 
-  // Craft a professional message with clean line breaks
-  const message =
-    `📢 *Onboarding Invitation*\n\n` +
-    `You have been invited to join our team on PayRoller!\n\n` +
-    `• *Position/Role:* ${inviteRole}\n` +
-    `• *Starting Basic Salary:* Ksh ${formattedSalary}\n\n` +
-    `Please click the link below to complete your profile and access your staff portal:\n` +
-    `${generatedLink}`;
+    const message =
+      `📢 *Onboarding Invitation*\n\n` +
+      `You have been invited to join our team on PayRoller!\n\n` +
+      `• *Position/Role:* ${inviteRole}\n` +
+      `• *Starting Basic Salary:* Ksh ${formattedSalary}\n\n` +
+      `Please click the link below to complete your profile and access your staff portal:\n` +
+      `${generatedLink}`;
 
-  // Encode text for URL safety
-  const encodedMessage = encodeURIComponent(message);
+    const encodedMessage = encodeURIComponent(message);
 
-  // 4. Fire the window.open with the formatted completePhoneNumber string
-  window.open(
-    `https://api.whatsapp.com/send?phone=${completePhoneNumber}&text=${encodedMessage}`,
-    "_blank",
-  );
-};
+    window.open(
+      `https://api.whatsapp.com/send?phone=${completePhoneNumber}&text=${encodedMessage}`,
+      "_blank",
+    );
+  };
+
+  const handleVerifyReceipt = async (receiptCode, callback) => {
+    try {
+      if (receiptCode.length < 10) {
+        showNotice("Invalid M-Pesa confirmation sequence format.", "error");
+        callback();
+        return;
+      }
+
+      // 1. Insert into Supabase ledger
+      const { error } = await supabase.from("payment_ledger").insert([
+        {
+          restaurant_id: adminProfile.restaurant_id,
+          mpesa_code: receiptCode.toUpperCase(),
+          status: "pending",
+        },
+      ]);
+
+      if (error) {
+        if (error.code === "23505") {
+          showNotice(
+            "This transaction code has already been submitted.",
+            "error",
+          );
+        } else {
+          showNotice(error.message, "error");
+        }
+        callback();
+        return;
+      }
+
+      showNotice(
+        "Reference submitted successfully! Access will restore once verified.",
+        "success",
+      );
+
+      // 2. Trigger Silent Admin WhatsApp Notification via Background API
+      try {
+        const adminWhatsAppMessage = 
+          `💰 *New Subscription Payment Submitted*\n\n` +
+          `• *Workspace ID:* ${adminProfile.restaurant_id}\n` +
+          `• *M-Pesa Code:* ${receiptCode.toUpperCase()}\n` +
+          `• *Status:* Pending Manual Verification\n\n` +
+          `👉 Log into Supabase or your tracker panel to verify funds and activate this workspace.`;
+
+        // Using your CallMeBot setup to safely ping your personal admin number in the background
+        const apiKey = "6201505"; 
+        const adminPhone = "254707178642";
+        
+        const gatewayUrl = `https://api.callmebot.com/whatsapp.php?phone=${adminPhone}&text=${encodeURIComponent(adminWhatsAppMessage)}&apikey=${apiKey}`;
+        
+        // Dispatched completely silently without reloading or shifting focus
+        fetch(gatewayUrl, { mode: 'no-cors' });
+      } catch (triggerErr) {
+        console.error("WhatsApp notification dispatch dropped:", triggerErr);
+      }
+
+    } catch (err) {
+      console.error("Submission breakdown:", err);
+    } finally {
+      callback();
+    }
+  };
+
+  const handlePaywallSubmit = (e) => {
+    e.preventDefault();
+    if (!mpesaCode.trim()) return;
+    setVerifyingCode(true);
+    handleVerifyReceipt(mpesaCode.trim(), () => {
+      setMpesaCode("");
+      setVerifyingCode(false);
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-[#09090b] text-[#e4e4e7] font-sans antialiased overflow-x-hidden">
       {/* MOBILE BACKDROP OVERLAY */}
@@ -376,12 +454,15 @@ export default function AdminDashboard() {
               <nav className="space-y-1">
                 {/* Tab 1: Overview */}
                 <button
+                  disabled={isPaywallLocked}
                   onClick={() => {
                     setActiveTab("overview");
                     setSidebarOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                    activeTab === "overview"
+                    isPaywallLocked
+                      ? "text-zinc-600 cursor-not-allowed"
+                      : activeTab === "overview"
                       ? "text-white bg-[#121214] border border-[#1f1f23]"
                       : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
                   }`}
@@ -392,12 +473,15 @@ export default function AdminDashboard() {
 
                 {/* Tab 2: Directory */}
                 <button
+                  disabled={isPaywallLocked}
                   onClick={() => {
                     setActiveTab("directory");
                     setSidebarOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                    activeTab === "directory"
+                    isPaywallLocked
+                      ? "text-zinc-600 cursor-not-allowed"
+                      : activeTab === "directory"
                       ? "text-white bg-[#121214] border border-[#1f1f23]"
                       : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
                   }`}
@@ -408,12 +492,15 @@ export default function AdminDashboard() {
 
                 {/* Tab 3: Payroll Hub */}
                 <button
+                  disabled={isPaywallLocked}
                   onClick={() => {
                     setActiveTab("payroll");
                     setSidebarOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                    activeTab === "payroll"
+                    isPaywallLocked
+                      ? "text-zinc-600 cursor-not-allowed"
+                      : activeTab === "payroll"
                       ? "text-white bg-[#121214] border border-[#1f1f23]"
                       : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
                   }`}
@@ -429,8 +516,9 @@ export default function AdminDashboard() {
         {/* Bottom Actions Sidebar Footer */}
         <div className="border-t border-[#1f1f23] pt-4 space-y-2">
           <button
+            disabled={isPaywallLocked}
             onClick={fetchData}
-            className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2 text-zinc-400 hover:text-white"
+            className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw size={12} />
             <span>Refresh Database</span>
@@ -459,14 +547,14 @@ export default function AdminDashboard() {
             </div>
           </div>
           <span className="text-[10px] text-zinc-500 font-mono">
-            /{activeTab}
+            /{isPaywallLocked ? "suspended" : activeTab}
           </span>
         </header>
 
         {/* DESKTOP HEADER NAVBAR */}
         <header className="hidden md:flex h-14 border-b border-[#1f1f23] items-center justify-between px-8 bg-[#09090b]">
           <div className="text-xs text-zinc-500 font-mono">
-            payroller &gt; {activeTab}
+            payroller &gt; {isPaywallLocked ? "subscription_required" : activeTab}
           </div>
         </header>
 
@@ -489,12 +577,65 @@ export default function AdminDashboard() {
             <div className="text-center py-24 text-zinc-500 text-xs font-medium animate-pulse tracking-wide font-mono">
               SYNCING LEDGERS & METRICS...
             </div>
+          ) : isPaywallLocked ? (
+            /* DYNAMIC MANUALLY TRIGGERED PAYWALL OVERLAY INTERFACE */
+            <div className="max-w-md mx-auto my-8 bg-[#121214] border border-[#1f1f23] rounded-xl p-6 sm:p-8 space-y-6 shadow-2xl animate-fadeIn">
+              <div className="flex flex-col items-center text-center space-y-3">
+                <div className="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-sm">
+                  <Lock size={22} />
+                </div>
+                <div>
+                  <h2 className="text-md font-bold text-white tracking-tight">
+                    Subscription Payment Required
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                    Your trial period or subscription billing cycle has concluded. Please settle your outstanding workspace dues to regain access.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-[#09090b] border border-[#1f1f23] rounded-lg p-4 space-y-3 text-xs font-mono">
+                <div className="text-zinc-500 uppercase text-[10px] tracking-wider font-bold font-sans">
+                  Payment Instructions
+                </div>
+                <div className="text-zinc-300 space-y-1">
+                  <p>1. Send the KES 800/= subscription amount via **M-Pesa**</p>
+                  <p>2. Pay via Pochi La Biashara: <span className="text-white font-bold">0707178642</span></p>
+                  <p>3. Copy your 10-character confirmation receipt code.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handlePaywallSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                    M-Pesa Transaction Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={12}
+                    placeholder="e.g. SGX789JK02"
+                    value={mpesaCode}
+                    onChange={(e) => setMpesaCode(e.target.value.toUpperCase())}
+                    className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-amber-500/50 rounded-lg p-3 text-white text-sm font-mono tracking-widest placeholder-zinc-700 outline-none transition-all text-center"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={verifyingCode || !mpesaCode.trim()}
+                  className="w-full bg-white hover:bg-zinc-200 disabled:bg-zinc-900 disabled:text-zinc-600 text-black font-bold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2"
+                >
+                  {verifyingCode ? "Verifying Reference..." : "Submit Payment Reference"}
+                </button>
+              </form>
+            </div>
           ) : (
             <>
               {/* TAB 1: OVERVIEW */}
               {activeTab === "overview" && (
                 <div className="space-y-6">
-                  {/* Metric Cards Grid - Adjusted to 2 equal columns spanning full width */}
+                  {/* Metric Cards Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                     <div className="bg-[#121214] border border-[#1f1f23] p-5 rounded-xl flex flex-col justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
@@ -527,7 +668,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Overview Layout - Removed 'max-w-2xl mx-auto' to let it span the full container width */}
+                  {/* Overview Layout */}
                   <div className="bg-[#121214] border border-[#1f1f23] rounded-xl p-5 sm:p-8 space-y-6">
                     <div>
                       <h2 className="text-sm font-bold text-white tracking-tight">
@@ -540,7 +681,6 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="space-y-4 text-xs">
-                      {/* Input Fields Panel */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">
@@ -575,38 +715,37 @@ export default function AdminDashboard() {
                           />
                         </div>
 
-                        {/* New Phone Number Input (Spans full width on small screens) */}
                         <div className="sm:col-span-2">
-  <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">
-    Recipient Phone Number (WhatsApp)
-  </label>
-  <div className="relative flex items-center">
-    {/* Permanent un-deletable visual prefix */}
-    <span className="absolute left-3 text-zinc-500 font-mono text-sm select-none pointer-events-none">
-      254
-    </span>
-    <input
-      type="tel"
-      disabled={!!generatedLink}
-      placeholder="712345678"
-      className="w-full bg-[#09090b] border border-[#1f1f23] rounded-lg p-2.5 pl-11 text-white focus:outline-none focus:border-emerald-500/50 font-mono disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-      value={invitePhone}
-      onChange={(e) => {
-        // Enforce numbers only and limit to 9 digits maximum (after the 254)
-        const cleanValue = e.target.value.replace(/\D/g, '').slice(0, 9);
-        setInvitePhone(cleanValue);
-      }}
-    />
-  </div>
-  {!generatedLink && (
-    <span className="text-[10px] text-zinc-600 mt-1 block font-mono">
-      Type the 9-digit mobile number (e.g., 712345678). Country code is locked.
-    </span>
-  )}
-</div>
+                          <label className="block text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">
+                            Recipient Phone Number (WhatsApp)
+                          </label>
+                          <div className="relative flex items-center">
+                            <span className="absolute left-3 text-zinc-500 font-mono text-sm select-none pointer-events-none">
+                              254
+                            </span>
+                            <input
+                              type="tel"
+                              disabled={!!generatedLink}
+                              placeholder="712345678"
+                              className="w-full bg-[#09090b] border border-[#1f1f23] rounded-lg p-2.5 pl-11 text-white focus:outline-none focus:border-emerald-500/50 font-mono disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                              value={invitePhone}
+                              onChange={(e) => {
+                                const cleanValue = e.target.value
+                                  .replace(/\D/g, "")
+                                  .slice(0, 9);
+                                setInvitePhone(cleanValue);
+                              }}
+                            />
+                          </div>
+                          {!generatedLink && (
+                            <span className="text-[10px] text-zinc-600 mt-1 block font-mono">
+                              Type the 9-digit mobile number (e.g., 712345678).
+                              Country code is locked.
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Primary Link Generation Call to Action / Reset State */}
                       {!generatedLink ? (
                         <button
                           onClick={handleGenerateInvite}
@@ -617,7 +756,6 @@ export default function AdminDashboard() {
                       ) : (
                         <button
                           onClick={() => {
-                            // Explicitly clear states to prepare for a brand-new generation
                             setGeneratedLink("");
                             setInviteRole("Waiter");
                             setInviteBaseSalary("");
@@ -629,7 +767,6 @@ export default function AdminDashboard() {
                         </button>
                       )}
 
-                      {/* Resulting Link & Share Panel */}
                       {generatedLink && (
                         <div className="bg-[#09090b] border border-emerald-500/20 p-4 rounded-lg mt-4 space-y-3 animate-fadeIn">
                           <div className="flex items-center justify-between">
@@ -770,7 +907,6 @@ export default function AdminDashboard() {
                             className="bg-[#121214] border border-[#1f1f23] rounded-xl p-5 hover:border-zinc-800 transition-all flex flex-col justify-between shadow-sm"
                           >
                             <div>
-                              {/* Header: Name & Role Badge */}
                               <div className="flex justify-between items-start mb-4">
                                 <div>
                                   <h3 className="font-bold text-white text-md tracking-tight">
@@ -784,7 +920,6 @@ export default function AdminDashboard() {
 
                               <hr className="border-[#1f1f23]/60 my-4" />
 
-                              {/* Base Salary Line */}
                               <div className="flex justify-between items-center text-xs py-2 px-1 text-zinc-400">
                                 <span className="font-medium">Base Salary</span>
                                 <div className="flex items-center gap-2">
@@ -807,7 +942,6 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
 
-                              {/* Adjustments (Form Grid) */}
                               <div className="space-y-3.5 mt-4">
                                 <div>
                                   <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
@@ -955,7 +1089,6 @@ export default function AdminDashboard() {
                               </div>
                             </div>
 
-                            {/* Card Footer Calculations */}
                             <div className="mt-6 pt-4 border-t border-[#1f1f23]/60">
                               <div className="flex justify-between items-center">
                                 <div>
@@ -987,7 +1120,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Unsaved Edits Notification Bar */}
-      {hasUnsavedChanges && (
+      {hasUnsavedChanges && !isPaywallLocked && (
         <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 z-50 bg-[#121214] border border-[#1f1f23] rounded-xl p-4 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-left">
             <p className="text-xs font-bold text-white">

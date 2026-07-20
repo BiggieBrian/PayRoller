@@ -4,6 +4,23 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient'; // Pointing to your client setup
 
+// 🚀 FREE WHATSAPP ALERTS GATEWAY HELPER
+const sendFreeWhatsAppAlert = async (messageText) => {
+  const yourPhoneNumber = "254707178642"; // 👈 Put your number here (include country code, no + or spaces)
+  const myApiKey = "6201505";         // 👈 Put your CallMeBot API key here
+
+  const encodedMessage = encodeURIComponent(messageText);
+  const apiUrl = `https://api.callmebot.com/whatsapp.php?phone=${yourPhoneNumber}&text=${encodedMessage}&apikey=${myApiKey}`;
+
+  try {
+    // CallMeBot works via a simple hidden GET request
+    await fetch(apiUrl, { method: "GET", mode: "no-cors" });
+    console.log("Registration WhatsApp alert sent successfully.");
+  } catch (err) {
+    console.error("Error sending WhatsApp notification:", err);
+  }
+};
+
 export default function RestaurantSetup() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -57,6 +74,12 @@ export default function RestaurantSetup() {
       }
 
       const createdRestaurant = insertedRestaurants[0];
+
+      // 🚀 FIRE NEW REGISTRATION WHATSAPP NOTIFICATION
+      // Triggers silently in the background right after database insertion passes successfully!
+      sendFreeWhatsAppAlert(
+        `🚀 *New Onboarding on PayRoller!*\n\n*Workspace:* ${formData.restaurantName}\n*Admin Name:* ${formData.adminName}\n*Email Address:* ${formData.email}\n*Account ID:* ${createdRestaurant.id}`
+      );
 
       // 3. Create or Update the Admin's Profile linked to the restaurant
       const { error: profileError } = await supabase
