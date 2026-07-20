@@ -514,18 +514,20 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
         </div>
 
         {/* Bottom Actions Sidebar Footer */}
-        <div className="border-t border-[#1f1f23] pt-4 space-y-2">
+        <div className="border-t border-[#1f1f23] pt-4 space-y-2 text-zinc-400 hover:text-white">
           <button
             disabled={isPaywallLocked}
             onClick={fetchData}
-            className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2  disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw size={12} />
             <span>Refresh Database</span>
           </button>
-          <p>Support Contact:</p>
-          <p>0707178642</p>
-          <p>brianachira007@gmail.com</p>
+          <div className="text-center flex items-center justify-center">
+            <span>Support Contact:</span>
+            <a href="https://wa.me/254707178642">Chat on WhatsApp</a>
+            <a href="brianachira007@gmail.com">Email Us</a>
+          </div>
         </div>
       </aside>
 
