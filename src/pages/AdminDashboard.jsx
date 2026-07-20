@@ -523,6 +523,9 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
             <RefreshCw size={12} />
             <span>Refresh Database</span>
           </button>
+          <p>Support Contact:</p>
+          <p>0707178642</p>
+          <p>brianachira007@gmail.com</p>
         </div>
       </aside>
 
