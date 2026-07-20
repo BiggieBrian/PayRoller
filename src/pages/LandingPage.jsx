@@ -626,7 +626,8 @@ export default function LandingPage() {
                   </a>
                 </li>
                 <li>
-                  <span className="text-zinc-600">WhatsApp Hotlines</span>
+                  <span className="text-zinc-600">WhatsApp Hotline:</span>
+                  <a href="https://wa.me/254707178642" className="text-zinc-600">+254707178642</a>
                 </li>
               </ul>
             </div>
