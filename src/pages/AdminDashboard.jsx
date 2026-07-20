@@ -514,21 +514,37 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
         </div>
 
         {/* Bottom Actions Sidebar Footer */}
-        <div className="border-t border-[#1f1f23] pt-4 space-y-2 text-zinc-400 hover:text-white">
-          <button
-            disabled={isPaywallLocked}
-            onClick={fetchData}
-            className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2  disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={12} />
-            <span>Refresh Database</span>
-          </button>
-          <div className="text-center flex items-center justify-center">
-            <span>Support Contact:</span>
-            <a href="https://wa.me/254707178642">Chat on WhatsApp</a>
-            <a href="brianachira007@gmail.com">Email Us</a>
-          </div>
-        </div>
+        <div className="border-t border-[#1f1f23] pt-4 space-y-3">
+  {/* Refresh Button */}
+  <button
+    disabled={isPaywallLocked}
+    onClick={fetchData}
+    className="w-full bg-[#121214] hover:bg-zinc-900 border border-[#1f1f23] px-3 py-2 rounded-lg text-[11px] font-bold transition-all text-center flex items-center justify-center gap-2 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    <RefreshCw size={12} />
+    <span>Refresh Database</span>
+  </button>
+
+  {/* Support Subtext Section */}
+  <div className="flex items-center justify-center gap-2 text-[10px] font-medium text-zinc-500">
+    <span>Support:</span>
+    <a 
+      href="https://wa.me/254707178642" 
+      target="_blank" 
+      rel="noopener noreferrer" 
+      className="text-zinc-400 hover:text-emerald-400 transition-colors"
+    >
+      WhatsApp
+    </a>
+    <span className="text-zinc-700 font-normal">|</span>
+    <a 
+      href="mailto:brianachira007@gmail.com" 
+      className="text-zinc-400 hover:text-white transition-colors"
+    >
+      Email
+    </a>
+  </div>
+</div>
       </aside>
 
       {/* RIGHT MAIN CONTENT AREA */}
