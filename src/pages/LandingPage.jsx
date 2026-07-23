@@ -447,20 +447,20 @@ export default function LandingPage() {
                     Complete Pro Access
                   </h3>
                   <span className="border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[9px] font-mono tracking-widest uppercase text-emerald-400 bg-emerald-950/40 font-bold animate-pulse">
-                    2 Months Free Trial
+                    1 Month Free Trial
                   </span>
                 </div>
 
                 <div className="flex items-baseline gap-2 mb-2">
                   <span className="text-4xl font-serif font-light text-white">
-                    Ksh 800
+                    Ksh 499
                   </span>
                   <span className="text-xs text-zinc-500 font-mono">
                     / month
                   </span>
                 </div>
                 <p className="text-xs text-emerald-400 font-mono mb-6">
-                  First 60 days on us, cancel anytime.
+                  First 30 days on us, cancel anytime.
                 </p>
 
                 <div className="w-full h-px bg-[#1f1f23] mb-6"></div>
@@ -489,7 +489,7 @@ export default function LandingPage() {
                 to="/setup-restaurant"
                 className="w-full mt-10 text-center bg-white text-[#09090b] py-3 rounded-full text-xs font-mono tracking-wider uppercase font-bold hover:bg-emerald-400 hover:text-black transition-all duration-200 shadow-md"
               >
-                Start 2-Month Free Trial
+                Start 1-Month Free Trial
               </Link>
             </div>
           </div>

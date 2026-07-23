@@ -6,8 +6,8 @@ import { supabase } from '../supabaseClient'; // Pointing to your client setup
 
 // 🚀 FREE WHATSAPP ALERTS GATEWAY HELPER
 const sendFreeWhatsAppAlert = async (messageText) => {
-  const yourPhoneNumber = "254707178642"; // 👈 Put your number here (include country code, no + or spaces)
-  const myApiKey = "6201505";         // 👈 Put your CallMeBot API key here
+  const yourPhoneNumber = "254707178642"; 
+  const myApiKey = "6201505";    
 
   const encodedMessage = encodeURIComponent(messageText);
   const apiUrl = `https://api.callmebot.com/whatsapp.php?phone=${yourPhoneNumber}&text=${encodedMessage}&apikey=${myApiKey}`;
