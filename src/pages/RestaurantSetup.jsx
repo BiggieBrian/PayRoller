@@ -89,6 +89,7 @@ export default function RestaurantSetup() {
           full_name: formData.adminName,
           restaurant_id: createdRestaurant.id, // Linking verified!
           role: 'admin',
+          access_level: 'owner',
         }], { onConflict: 'id' }); // If the row already exists from a trigger, update it!
 
       if (profileError) throw profileError;

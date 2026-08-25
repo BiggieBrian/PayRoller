@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import EmployeeCard from "../components/EmployeeCard";
+import { calculateSHA, calculateNSSF, calculateOvertimePay } from "../utils/payrollCalculations";
+import { getPermissions } from "../utils/permissions";
+import { JOB_TITLES } from "../utils/roles";
 import {
   CheckCircle,
   Coins,
@@ -23,7 +26,6 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
   const [loading, setLoading] = useState(true);
   const [dbEmployees, setDbEmployees] = useState([]); // Master copy from DB for state tracking
   const [employees, setEmployees] = useState([]); // Local draft state
-  const [activeShifts, setActiveShifts] = useState([]);
   const [adminProfile, setAdminProfile] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notice, setNotice] = useState({ text: "", type: "" });
@@ -43,6 +45,20 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
     setNotice({ text, type });
     setTimeout(() => setNotice({ text: "", type: "" }), 5000);
   };
+
+  // What this logged-in admin-route user is actually allowed to see/edit.
+  // Owner/Director get everything; Manager is view-only; Accountant only
+  // gets the Payroll Hub. Falls back to the most restrictive set if the
+  // profile hasn't loaded yet.
+  const permissions = getPermissions(adminProfile?.access_level);
+
+  // If the current tab isn't one this access level can see (e.g. an
+  // Accountant somehow lands on "directory"), bounce to Overview.
+  useEffect(() => {
+    if (activeTab === "directory" && !permissions.viewDirectory) {
+      setActiveTab("overview");
+    }
+  }, [activeTab, permissions.viewDirectory]);
 
   // Check if our local draft state differs from our DB master copies
   const hasUnsavedChanges =
@@ -79,27 +95,21 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
 
       if (employeesError) throw employeesError;
 
-      const cleanEmployees = employeesData || [];
+      // Recompute SHA/NSSF for any row that isn't manually overridden, so
+      // the payroll screen reflects current gross pay immediately on load
+      // instead of showing whatever the DB happened to store last.
+      const cleanEmployees = (employeesData || []).map((emp) => {
+        const gross = Number(emp.basic_salary || 0) + Number(emp.overtime || 0);
+        return {
+          ...emp,
+          sha: emp.sha_is_manual ? Number(emp.sha || 0) : calculateSHA(gross),
+          nssf: emp.nssf_is_manual
+            ? Number(emp.nssf || 0)
+            : calculateNSSF(gross).employee,
+        };
+      });
       setDbEmployees(JSON.parse(JSON.stringify(cleanEmployees))); // Deep copy for comparison
       setEmployees(cleanEmployees);
-
-      // Fetch active shifts
-      const { data: shiftsData, error: shiftsError } = await supabase
-        .from("shifts")
-        .select(
-          `
-          *,
-          profiles!employee_id ( full_name, job_title, restaurant_id )
-        `,
-        )
-        .is("clock_out", null);
-
-      if (shiftsError) throw shiftsError;
-
-      const tenantActiveShifts = (shiftsData || []).filter(
-        (shift) => shift.profiles?.restaurant_id === profileData.restaurant_id,
-      );
-      setActiveShifts(tenantActiveShifts);
     } catch (err) {
       showNotice(err.message, "error");
     } finally {
@@ -116,10 +126,62 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
     const numericValue = parseFloat(value) || 0;
     setEmployees((prev) =>
       prev.map((emp) => {
-        if (emp.id === employeeId) {
-          return { ...emp, [fieldName]: numericValue };
+        if (emp.id !== employeeId) return emp;
+
+        // Editing SHA/NSSF/overtime pay directly = manual override from
+        // here on; hours fields stop driving that particular figure.
+        if (fieldName === "sha") {
+          return { ...emp, sha: numericValue, sha_is_manual: true };
         }
-        return emp;
+        if (fieldName === "nssf") {
+          return { ...emp, nssf: numericValue, nssf_is_manual: true };
+        }
+        if (fieldName === "overtime") {
+          const updated = { ...emp, overtime: numericValue, overtime_is_manual: true };
+          const gross = Number(updated.basic_salary || 0) + numericValue;
+          if (!updated.sha_is_manual) updated.sha = calculateSHA(gross);
+          if (!updated.nssf_is_manual) updated.nssf = calculateNSSF(gross).employee;
+          return updated;
+        }
+
+        const updated = { ...emp, [fieldName]: numericValue };
+
+        // Ordinary/rest-day overtime hours changed -> recompute overtime
+        // pay from hours (unless overtime was manually overridden), then
+        // re-derive gross pay and recompute SHA/NSSF off that.
+        if (
+          fieldName === "overtime_ordinary_hours" ||
+          fieldName === "overtime_restday_hours"
+        ) {
+          if (!updated.overtime_is_manual) {
+            const overtimeCalc = calculateOvertimePay(
+              Number(updated.basic_salary || 0),
+              Number(updated.overtime_ordinary_hours || 0),
+              Number(updated.overtime_restday_hours || 0),
+            );
+            updated.overtime = overtimeCalc.total;
+          }
+        }
+
+        // Basic salary or overtime pay changed -> re-derive gross pay and
+        // recompute SHA/NSSF, but only for fields the admin hasn't
+        // manually overridden.
+        if (
+          fieldName === "basic_salary" ||
+          fieldName === "overtime_ordinary_hours" ||
+          fieldName === "overtime_restday_hours"
+        ) {
+          const gross =
+            Number(updated.basic_salary || 0) + Number(updated.overtime || 0);
+          if (!updated.sha_is_manual) {
+            updated.sha = calculateSHA(gross);
+          }
+          if (!updated.nssf_is_manual) {
+            updated.nssf = calculateNSSF(gross).employee;
+          }
+        }
+
+        return updated;
       }),
     );
   };
@@ -138,7 +200,15 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
             bank_name: emp.bank_name,
             account_number: emp.account_number,
             basic_salary: Number(emp.basic_salary || 0),
+            fixed_salary: Number(emp.basic_salary || 0), // keep in sync — payslip/PDF read fixed_salary
             overtime: Number(emp.overtime || 0),
+            overtime_ordinary_hours: Number(emp.overtime_ordinary_hours || 0),
+            overtime_restday_hours: Number(emp.overtime_restday_hours || 0),
+            overtime_is_manual: !!emp.overtime_is_manual,
+            sha: Number(emp.sha || 0),
+            sha_is_manual: !!emp.sha_is_manual,
+            nssf: Number(emp.nssf || 0),
+            nssf_is_manual: !!emp.nssf_is_manual,
             system_deduction: Number(emp.system_deduction || 0),
             shorts: Number(emp.shorts || 0),
             advance: Number(emp.advance || 0),
@@ -203,6 +273,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
       "ACC NO.",
       "BASIC SALARY",
       "BONUS",
+      "SHA",
+      "NSSF",
       "SYSTEM DEDUCTION",
       "SHORTS",
       "ADVANCE",
@@ -213,6 +285,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
 
     let sumBasic = 0,
       sumBonus = 0,
+      sumSha = 0,
+      sumNssf = 0,
       sumSys = 0,
       sumShorts = 0,
       sumAdv = 0,
@@ -223,16 +297,20 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
     const rows = employees.map((emp) => {
       const basic = Number(emp.basic_salary || 0);
       const bonus = Number(emp.overtime || 0);
+      const sha = Number(emp.sha || 0);
+      const nssf = Number(emp.nssf || 0);
       const sys = Number(emp.system_deduction || 0);
       const shorts = Number(emp.shorts || 0);
       const adv = Number(emp.advance || 0);
       const breakages = Number(emp.breakages || 0);
 
-      const deductions = sys + shorts + adv + breakages;
+      const deductions = sha + nssf + sys + shorts + adv + breakages;
       const net = Math.max(0, basic + bonus - deductions);
 
       sumBasic += basic;
       sumBonus += bonus;
+      sumSha += sha;
+      sumNssf += nssf;
       sumSys += sys;
       sumShorts += shorts;
       sumAdv += adv;
@@ -247,6 +325,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
         `'${emp.account_number || ""}`,
         basic,
         bonus,
+        sha,
+        nssf,
         sys,
         shorts,
         adv,
@@ -263,6 +343,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
       "",
       sumBasic,
       sumBonus,
+      sumSha,
+      sumNssf,
       sumSys,
       sumShorts,
       sumAdv,
@@ -471,24 +553,26 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                   <span>Overview</span>
                 </button>
 
-                {/* Tab 2: Directory */}
-                <button
-                  disabled={isPaywallLocked}
-                  onClick={() => {
-                    setActiveTab("directory");
-                    setSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                    isPaywallLocked
-                      ? "text-zinc-600 cursor-not-allowed"
-                      : activeTab === "directory"
-                      ? "text-white bg-[#121214] border border-[#1f1f23]"
-                      : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
-                  }`}
-                >
-                  <Users size={14} />
-                  <span>Employee Directory</span>
-                </button>
+                {/* Tab 2: Directory (hidden for access levels without directory visibility, e.g. Accountant) */}
+                {permissions.viewDirectory && (
+                  <button
+                    disabled={isPaywallLocked}
+                    onClick={() => {
+                      setActiveTab("directory");
+                      setSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                      isPaywallLocked
+                        ? "text-zinc-600 cursor-not-allowed"
+                        : activeTab === "directory"
+                        ? "text-white bg-[#121214] border border-[#1f1f23]"
+                        : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
+                    }`}
+                  >
+                    <Users size={14} />
+                    <span>Employee Directory</span>
+                  </button>
+                )}
 
                 {/* Tab 3: Payroll Hub */}
                 <button
@@ -678,6 +762,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                             const basic = Number(emp.basic_salary || 0);
                             const bonus = Number(emp.overtime || 0);
                             const ded =
+                              Number(emp.sha || 0) +
+                              Number(emp.nssf || 0) +
                               Number(emp.system_deduction || 0) +
                               Number(emp.shorts || 0) +
                               Number(emp.advance || 0) +
@@ -690,6 +776,7 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                   </div>
 
                   {/* Overview Layout */}
+                  {permissions.manageInvites && (
                   <div className="bg-[#121214] border border-[#1f1f23] rounded-xl p-5 sm:p-8 space-y-6">
                     <div>
                       <h2 className="text-sm font-bold text-white tracking-tight">
@@ -713,10 +800,11 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                             value={inviteRole}
                             onChange={(e) => setInviteRole(e.target.value)}
                           >
-                            <option value="Waiter">Waiter</option>
-                            <option value="Chef">Chef</option>
-                            <option value="Cashier">Cashier</option>
-                            <option value="Steward">Steward</option>
+                            {JOB_TITLES.map((title) => (
+                              <option key={title} value={title}>
+                                {title}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -836,11 +924,12 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
               {/* TAB 2: DIRECTORY */}
-              {activeTab === "directory" && (
+              {activeTab === "directory" && permissions.viewDirectory && (
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row gap-4">
                     <input
@@ -862,6 +951,8 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                         <EmployeeCard
                           key={emp.id}
                           employee={emp}
+                          readOnly={!permissions.editDirectory}
+                          canDelete={permissions.deleteEmployees}
                           onUpdate={(id, updatedData) => {
                             setEmployees((prev) =>
                               prev.map((item) =>
@@ -888,8 +979,9 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                         Monthly Payroll Run
                       </h2>
                       <p className="text-xs text-zinc-500 mt-1">
-                        Adjust monthly parameters below. Changes are held as
-                        local draft until saved via the footer banner.
+                        {permissions.editPayroll
+                          ? "Adjust monthly parameters below. Changes are held as local draft until saved via the footer banner."
+                          : "View-only \u2014 your access level can review payroll figures but can't edit or save changes."}
                       </p>
                     </div>
                     <button
@@ -906,16 +998,23 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                       No employee profiles registered to calculate payroll for.
                     </div>
                   ) : (
+                    <fieldset
+                      disabled={!permissions.editPayroll}
+                      className="contents"
+                    >
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {employees.map((emp) => {
                         const basic = Number(emp.basic_salary || 0);
                         const bonus = Number(emp.overtime || 0);
 
+                        const sha = Number(emp.sha || 0);
+                        const nssf = Number(emp.nssf || 0);
                         const sys = Number(emp.system_deduction || 0);
                         const shorts = Number(emp.shorts || 0);
                         const adv = Number(emp.advance || 0);
                         const breakages = Number(emp.breakages || 0);
-                        const totalDeductions = sys + shorts + adv + breakages;
+                        const totalDeductions =
+                          sha + nssf + sys + shorts + adv + breakages;
 
                         const netPay = Math.max(
                           0,
@@ -966,11 +1065,59 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                               <div className="space-y-3.5 mt-4">
                                 <div>
                                   <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-                                    <Plus
-                                      size={10}
-                                      className="text-emerald-500"
-                                    />{" "}
-                                    Performance Bonus
+                                    <Plus size={10} className="text-emerald-500" />{" "}
+                                    Ordinary OT hours
+                                  </label>
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={emp.overtime_ordinary_hours || ""}
+                                    onChange={(e) =>
+                                      handleLocalFieldChange(
+                                        emp.id,
+                                        "overtime_ordinary_hours",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-emerald-500/50 text-white px-3 py-1.5 rounded-lg text-xs outline-none transition-all font-mono"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    <Plus size={10} className="text-emerald-500" />{" "}
+                                    Rest-day / holiday OT hours
+                                  </label>
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={emp.overtime_restday_hours || ""}
+                                    onChange={(e) =>
+                                      handleLocalFieldChange(
+                                        emp.id,
+                                        "overtime_restday_hours",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-emerald-500/50 text-white px-3 py-1.5 rounded-lg text-xs outline-none transition-all font-mono"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                    <span className="flex items-center gap-1">
+                                      <Plus size={10} className="text-emerald-500" />
+                                      Overtime Pay
+                                    </span>
+                                    <span
+                                      className={
+                                        emp.overtime_is_manual
+                                          ? "text-amber-400 normal-case font-semibold"
+                                          : "text-emerald-500/80 normal-case font-semibold"
+                                      }
+                                    >
+                                      {emp.overtime_is_manual ? "manually adjusted" : "auto"}
+                                    </span>
                                   </label>
                                   <div className="relative">
                                     <span className="absolute left-3 top-2 text-[10px] text-zinc-600 font-bold font-mono">
@@ -989,6 +1136,77 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                                       }
                                       className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-emerald-500/50 text-white pl-11 pr-3 py-1.5 rounded-lg text-xs outline-none transition-all font-mono"
                                     />
+                                  </div>
+                                </div>
+
+                                <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-1.5 text-[9px] text-amber-300 leading-snug">
+                                  SHA &amp; NSSF below are auto-calculated from
+                                  basic + overtime using current rates. Verify
+                                  they still match the official bands before
+                                  saving.
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                      <Minus
+                                        size={10}
+                                        className="text-red-500"
+                                      />{" "}
+                                      SHA{" "}
+                                      <span className="text-emerald-500/80 normal-case font-semibold">
+                                        (auto)
+                                      </span>
+                                    </label>
+                                    <div className="relative">
+                                      <span className="absolute left-2.5 top-2 text-[10px] text-zinc-600 font-bold font-mono">
+                                        KES
+                                      </span>
+                                      <input
+                                        type="number"
+                                        placeholder="0"
+                                        value={emp.sha || 0}
+                                        onChange={(e) =>
+                                          handleLocalFieldChange(
+                                            emp.id,
+                                            "sha",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-red-500/50 text-white pl-9 pr-2 py-1.5 rounded-lg text-xs outline-none transition-all font-mono"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                                      <Minus
+                                        size={10}
+                                        className="text-red-500"
+                                      />{" "}
+                                      NSSF{" "}
+                                      <span className="text-emerald-500/80 normal-case font-semibold">
+                                        (auto)
+                                      </span>
+                                    </label>
+                                    <div className="relative">
+                                      <span className="absolute left-2.5 top-2 text-[10px] text-zinc-600 font-bold font-mono">
+                                        KES
+                                      </span>
+                                      <input
+                                        type="number"
+                                        placeholder="0"
+                                        value={emp.nssf || 0}
+                                        onChange={(e) =>
+                                          handleLocalFieldChange(
+                                            emp.id,
+                                            "nssf",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full bg-[#09090b] border border-[#1f1f23] focus:border-red-500/50 text-white pl-9 pr-2 py-1.5 rounded-lg text-xs outline-none transition-all font-mono"
+                                      />
+                                    </div>
                                   </div>
                                 </div>
 
@@ -1132,6 +1350,7 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
                         );
                       })}
                     </div>
+                    </fieldset>
                   )}
                 </div>
               )}
@@ -1141,7 +1360,7 @@ export default function AdminDashboard({ isPaywallLocked = false }) {
       </div>
 
       {/* Unsaved Edits Notification Bar */}
-      {hasUnsavedChanges && !isPaywallLocked && (
+      {hasUnsavedChanges && !isPaywallLocked && permissions.editPayroll && (
         <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 z-50 bg-[#121214] border border-[#1f1f23] rounded-xl p-4 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-left">
             <p className="text-xs font-bold text-white">

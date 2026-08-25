@@ -17,16 +17,22 @@ export const generatePayslipPDF = (profile) => {
   };
 
   // Math Calculations
+  // Uses the live payroll columns (same ones the Staff Portal and Admin
+  // Dashboard read/write) rather than the legacy `current_*` columns,
+  // which nothing in the app actually keeps in sync.
   const basicSalary = Number(profile?.fixed_salary || 0);
-  const overtime = Number(profile?.current_overtime || 0);
+  const overtime = Number(profile?.overtime || 0);
   const totalPaid = basicSalary + overtime;
 
-  const systemDeduction = Number(profile?.current_system_deduction || 0);
-  const shorts = Number(profile?.current_shorts || 0);
-  const advance = Number(profile?.current_advance || 0);
-  const breakages = Number(profile?.current_breakages || 0);
-  
-  const totalDeductions = systemDeduction + shorts + advance + breakages;
+  const sha = Number(profile?.sha || 0);
+  const nssf = Number(profile?.nssf || 0);
+  const systemDeduction = Number(profile?.system_deduction || 0);
+  const shorts = Number(profile?.shorts || 0);
+  const advance = Number(profile?.advance || 0);
+  const breakages = Number(profile?.breakages || 0);
+
+  const totalDeductions =
+    sha + nssf + systemDeduction + shorts + advance + breakages;
   const netSalary = totalPaid - totalDeductions;
   
   const payPeriod = new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
@@ -87,8 +93,10 @@ export const generatePayslipPDF = (profile) => {
     startY: 80,
     head: [['Earnings Category', 'Amount', 'Deductions Category', 'Amount']],
     body: [
-      ['Basic Salary', formatKES(basicSalary), 'System Deductions', formatKES(systemDeduction)],
-      ['Overtime Work', formatKES(overtime), 'Shortages', formatKES(shorts)],
+      ['Basic Salary', formatKES(basicSalary), 'SHA', formatKES(sha)],
+      ['Overtime Work', formatKES(overtime), 'NSSF', formatKES(nssf)],
+      ['', '', 'System Deductions', formatKES(systemDeduction)],
+      ['', '', 'Shortages', formatKES(shorts)],
       ['', '', 'Salary Advances', formatKES(advance)],
       ['', '', 'Breakages / Losses', formatKES(breakages)],
       [

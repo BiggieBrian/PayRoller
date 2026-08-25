@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import ClockInOut from "../components/ClockInOut";
 import { generatePayslipPDF } from "../utils/pdfGenerator";
 
 export default function EmployeePortal() {
@@ -35,12 +34,15 @@ export default function EmployeePortal() {
   const totalPaid = basicSalary + overtime;
 
   // Deductions
+  const sha = Number(profile?.sha || 0);
+  const nssf = Number(profile?.nssf || 0);
   const systemDeduction = Number(profile?.system_deduction || 0);
   const shorts = Number(profile?.shorts || 0);
   const advance = Number(profile?.advance || 0);
   const breakages = Number(profile?.breakages || 0);
 
-  const totalDeductions = systemDeduction + shorts + advance + breakages;
+  const totalDeductions =
+    sha + nssf + systemDeduction + shorts + advance + breakages;
   const netSalary = totalPaid - totalDeductions;
 
   return (
@@ -123,11 +125,6 @@ export default function EmployeePortal() {
           </button>
         </div>
 
-        {/* Clock In / Out Widget Section */}
-        <div className="bg-[#121214]/80 border border-[#1f1f23] rounded-2xl p-6 backdrop-blur-md shadow-2xl">
-          <ClockInOut />
-        </div>
-
         {/* Interactive Earnings Statement */}
         <section className="bg-[#121214]/80 border border-[#1f1f23] rounded-2xl p-6 md:p-8 backdrop-blur-md shadow-2xl space-y-6">
           <div className="flex justify-between items-center border-b border-[#1f1f23] pb-4">
@@ -173,6 +170,18 @@ export default function EmployeePortal() {
             <div className="border-t border-[#1f1f23] pt-4 space-y-2 text-[#a1a1aa]">
               <div className="flex justify-between text-[11px]">
                 <span className="text-zinc-500 uppercase tracking-wider text-[9px]">Deductions</span>
+              </div>
+              <div className="flex justify-between">
+                <span>SHA</span>
+                <span className="text-red-400">
+                  {showSalary ? `-${formatKES(sha)}` : "••••"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>NSSF</span>
+                <span className="text-red-400">
+                  {showSalary ? `-${formatKES(nssf)}` : "••••"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>System Deductions</span>

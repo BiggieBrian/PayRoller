@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { getAccessForJobTitle } from "../utils/roles";
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -51,13 +52,17 @@ const Register = () => {
 
       if (authData?.user) {
         // 2. Upsert the profile row with ALL custom inputs (overwrites the trigger's blank row)
+        const { role: derivedRole, access_level: derivedAccessLevel } =
+          getAccessForJobTitle(assignedRole);
+
         const { error: profileError } = await supabase.from("profiles").upsert(
           [
             {
               id: authData.user.id, // Matches the Auth UUID
               full_name: fullName,
-              role: "employee", // Satisfies user_role ENUM
-              job_title: assignedRole, // e.g., 'Chef', 'Waiter'
+              role: derivedRole, // 'admin' for Director/Manager/Accountant, 'employee' otherwise
+              access_level: derivedAccessLevel, // governs what the admin dashboard shows them
+              job_title: assignedRole, // e.g., 'Chef', 'Waiter', 'Manager'
               restaurant_id: restaurantId,
               basic_salary: parseFloat(baseSalary),
               fixed_salary: parseFloat(baseSalary), // Non-nullable
