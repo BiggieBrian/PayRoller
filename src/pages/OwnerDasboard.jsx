@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 
 export default function OwnerDashboard() {
@@ -9,7 +9,7 @@ export default function OwnerDashboard() {
 
   // 2. Data State
   const [restaurants, setRestaurants] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId] = useState(null);
 
@@ -27,8 +27,7 @@ export default function OwnerDashboard() {
   };
 
   // Fetch business accounts directly from the restaurants table
-  const fetchRestaurants = async () => {
-    setLoading(true);
+    const loadRestaurants = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("restaurants")
@@ -42,14 +41,20 @@ export default function OwnerDashboard() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Used by the "Sync Latest Feeds" button
+  const refresh = () => {
+    setLoading(true);
+    loadRestaurants();
   };
 
   useEffect(() => {
     if (isAuthenticated) {
-      fetchRestaurants();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadRestaurants();
     }
-  }, [isAuthenticated]);
-
+  }, [isAuthenticated, loadRestaurants]);
   // Toggle subscription switch handler straight to Supabase
  // Toggle subscription switch handler with automatic 30-day extension logic
  const handleToggleSubscription = async (restaurantId, currentSubscriptionState) => {
@@ -181,7 +186,7 @@ export default function OwnerDashboard() {
             <p className="text-xs text-zinc-500 mt-0.5">Instant manual access status changes for client workspaces.</p>
           </div>
           <button
-            onClick={fetchRestaurants}
+            onClick={refresh}
             disabled={loading}
             className="bg-[#121214] hover:bg-zinc-900 text-zinc-400 hover:text-white border border-[#1f1f23] px-3 py-1.5 rounded-lg text-xs font-semibold transition-all self-start"
           >

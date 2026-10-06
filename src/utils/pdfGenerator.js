@@ -76,7 +76,7 @@ export const generatePayslipPDF = (profile) => {
   doc.text(`Name:  ${profile?.full_name || 'Staff Member'}`, 14, 56);
   doc.text(`Role:  ${profile?.role?.toUpperCase() || 'STAFF'}`, 14, 61);
   doc.text(`Bank:  ${profile?.bank_name || 'COOP'}`, 14, 66);
-  doc.text(`Acct:   ${profile?.bank_account_number || 'N/A'}`, 14, 71);
+doc.text(`Acct:   ${profile?.account_number || profile?.bank_account_number || 'N/A'}`, 14, 71);
 
   doc.setFont('helvetica', 'bold');
   doc.text('STATEMENT DETAILS', 115, 48);
