@@ -79,3 +79,25 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .fade-up, .card-hover { animation: none; transition: none; }
 }
+
+/* Receipt card with a torn zigzag bottom edge (Staff Portal) */
+.receipt {
+  position: relative;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+  margin-bottom: 12px;
+}
+.receipt::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -12px;
+  height: 12px;
+  background:
+    linear-gradient(135deg, var(--surface-2) 25%, transparent 25%) -6px 0,
+    linear-gradient(225deg, var(--surface-2) 25%, transparent 25%) -6px 0;
+  background-size: 12px 12px;
+}
